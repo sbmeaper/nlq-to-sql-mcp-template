@@ -1,0 +1,47 @@
+{
+  "llm": {
+    "provider": "ollama",
+    "model": "qwen2.5-coder:7b",
+    "endpoint": "http://localhost:11434/api/generate",
+    "api_key": "",
+    "prompt_format": {
+      "structure": "ddl-samples-hints-question",
+      "include_sample_rows": true,
+      "sample_row_count": 8,
+      "hint_style": "sql_comment",
+      "response_prefix": "SELECT"
+    }
+  },
+  "database": {
+    "parquet_path": "/path/to/your/data.parquet",
+    "table_name": "data",
+    "log_path": "~/path/to/query_logs.duckdb",
+    "max_retries": 3
+  },
+  "semantic_layer": {
+    "auto_queries": [
+    ],
+    "static_context": [
+      "=== DATABASE ENGINE ===",
+      "DuckDB syntax only.",
+
+      "=== SCHEMA ===",
+      "Table: data",
+      "Columns: [auto-introspected at startup]",
+
+      "=== DATE HANDLING ===",
+      "Dates stored as VARCHAR 'YYYY-MM-DD HH:MM:SS'.",
+      "String comparisons work: date_col >= '2025-01-01'",
+      "TIMESTAMP functions require casting: CAST(date_col AS TIMESTAMP)",
+
+      "=== TYPE/CATEGORY MAPPINGS ===",
+      "[Add mappings from natural language terms to database values]",
+
+      "=== AGGREGATION RULES ===",
+      "[Specify which columns to SUM vs AVG]",
+
+      "=== COMMON QUERY PATTERNS ===",
+      "[Add proven SQL patterns for your data]"
+    ]
+  }
+}
