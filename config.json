@@ -1,8 +1,7 @@
 {
   "llm": {
-    "provider": "ollama",
-    "model": "qwen2.5-coder:7b",
-    "endpoint": "http://localhost:11434/api/generate",
+    "model": "ollama/qwen2.5-coder:7b",
+    "endpoint": "http://localhost:11434",
     "api_key": "",
     "prompt_format": {
       "structure": "ddl-samples-hints-question",
@@ -13,8 +12,9 @@
     }
   },
   "database": {
-    "parquet_path": "/path/to/your/data.parquet",
-    "table_name": "data",
+    "parquet_path": "",
+    "db_path": "",
+    "table_name": "",
     "log_path": "~/path/to/query_logs.duckdb",
     "max_retries": 3
   },
@@ -26,13 +26,15 @@
       "DuckDB syntax only.",
 
       "=== SCHEMA ===",
-      "Table: data",
+      "Table: [auto-discovered or from table_name config]",
       "Columns: [auto-introspected at startup]",
 
       "=== DATE HANDLING ===",
-      "Dates stored as VARCHAR 'YYYY-MM-DD HH:MM:SS'.",
-      "String comparisons work: date_col >= '2025-01-01'",
-      "TIMESTAMP functions require casting: CAST(date_col AS TIMESTAMP)",
+      "For TIMESTAMP columns: WHERE ts >= CURRENT_DATE AND ts < CURRENT_DATE + INTERVAL '1 day'",
+      "For VARCHAR dates: String comparisons work, or CAST(date_col AS TIMESTAMP)",
+
+      "=== QUERY RULES ===",
+      "Do not filter on columns unless the question explicitly mentions them.",
 
       "=== TYPE/CATEGORY MAPPINGS ===",
       "[Add mappings from natural language terms to database values]",

@@ -1,29 +1,54 @@
 import duckdb
 import uuid
 import time
+from pathlib import Path
 from typing import Optional
 from query_logger import log_attempt
 
 # Persistent connection - created once, reused for all queries
 _connection: Optional[duckdb.DuckDBPyConnection] = None
+_connection_mode: Optional[str] = None  # "db" or "parquet"
 
 
 def get_connection(config: dict) -> duckdb.DuckDBPyConnection:
-    """Get or create a persistent DuckDB connection with data view."""
-    global _connection
+    """
+    Get or create a persistent DuckDB connection.
 
-    if _connection is None:
-        parquet_path = config["database"]["parquet_path"]
-        table_name = config["database"].get("table_name", "data")
+    Supports two modes:
+    - db_path: Connect directly to a DuckDB database file
+    - parquet_path: Create in-memory connection with a view to the parquet file
+    """
+    global _connection, _connection_mode
+
+    if _connection is not None:
+        return _connection
+
+    db_config = config["database"]
+    table_name = db_config.get("table_name", "data")
+
+    # Check for DuckDB database file first
+    db_path = db_config.get("db_path", "")
+    if db_path:
+        db_path = Path(db_path).expanduser()
+        _connection = duckdb.connect(str(db_path), read_only=True)
+        _connection_mode = "db"
+        return _connection
+
+    # Fall back to parquet file with view
+    parquet_path = db_config.get("parquet_path", "")
+    if parquet_path:
+        parquet_path = str(Path(parquet_path).expanduser())
         _connection = duckdb.connect()
+        _connection_mode = "parquet"
 
         # Create a view so LLM can reference table name instead of full path
         _connection.execute(f"""
             CREATE OR REPLACE VIEW {table_name} AS 
             SELECT * FROM '{parquet_path}'
         """)
+        return _connection
 
-    return _connection
+    raise ValueError("Config must specify either 'db_path' or 'parquet_path' in database section")
 
 
 def sanitize_sql(sql: str) -> str:
@@ -102,7 +127,7 @@ def execute_with_retry(
         sql = llm_result["sql"]
         attempt_input_tokens = llm_result["input_tokens"]
         attempt_output_tokens = llm_result["output_tokens"]
-        
+
         total_input_tokens += attempt_input_tokens
         total_output_tokens += attempt_output_tokens
 

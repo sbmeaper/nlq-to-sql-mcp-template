@@ -11,7 +11,7 @@ This pattern is applicable to any domain with structured, queryable data: health
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   MCP Client    │────▶│   MCP Server    │────▶│   SQL Builder   │
-│ (Claude Desktop)│◀────│    (Python)     │◀────│      LLM        │
+│ (Claude Desktop)│◀────│    (Python)     │◀────│   LLM (LiteLLM) │
 └─────────────────┘     └────────┬────────┘     └─────────────────┘
                                  │
                         ┌────────┴────────┐
@@ -28,7 +28,7 @@ This pattern is applicable to any domain with structured, queryable data: health
 |-----------|------|
 | MCP Client | User interface; sends natural language questions, displays results |
 | MCP Server | Orchestrates flow; manages semantic context, retry logic, logging |
-| SQL Builder LLM | Translates NLQ to SQL; can be local (Ollama) or cloud (OpenAI, Anthropic) |
+| SQL Builder LLM | Translates NLQ to SQL; uses LiteLLM for provider-agnostic access |
 | Database | Executes SQL; returns results |
 | Query Log | Audit trail; captures all attempts for analysis and semantic layer refinement |
 
@@ -37,7 +37,7 @@ This pattern is applicable to any domain with structured, queryable data: health
 1. User asks a natural language question in the MCP client
 2. MCP server receives the question
 3. Server builds prompt: semantic context + question + prompt structure (per LLM config)
-4. Server sends prompt to SQL Builder LLM
+4. Server sends prompt to SQL Builder LLM via LiteLLM
 5. LLM returns a SQL SELECT statement
 6. Server sanitizes SQL (fixes common LLM generation errors)
 7. Server executes SQL against the database
@@ -52,11 +52,36 @@ This pattern is applicable to any domain with structured, queryable data: health
 |-----------|------------|-------|
 | Language | Python | |
 | MCP Framework | FastMCP | Simplifies MCP server implementation |
-| Database | DuckDB | Or PostgreSQL, SQLite, etc. |
-| Data Format | [Parquet / CSV / Native] | [Size estimate, update frequency] |
-| LLM Runtime | [Ollama / OpenAI / Anthropic] | See LLM configuration section |
-| LLM Model | [Model name] | [Memory/compute requirements] |
+| Database | DuckDB | Supports .duckdb files or Parquet/CSV |
+| LLM Integration | LiteLLM | Provider-agnostic; supports 100+ LLMs |
+| LLM Runtime | Ollama / OpenAI / Anthropic / etc. | Configurable via model string |
 | MCP Client | Claude Desktop | Standard MCP protocol; swappable |
+
+## Data Sources
+
+The template supports two data source types:
+
+### DuckDB Database File
+```json
+"database": {
+  "db_path": "~/path/to/data.duckdb",
+  "table_name": ""
+}
+```
+- Connects read-only to an existing DuckDB database
+- `table_name` auto-discovered if database has exactly one table
+- Best for: Data already in DuckDB, or logging databases
+
+### Parquet File
+```json
+"database": {
+  "parquet_path": "/path/to/data.parquet",
+  "table_name": "data"
+}
+```
+- Creates in-memory DuckDB connection with a view to the file
+- `table_name` becomes the view name (required, defaults to "data")
+- Best for: Single-file data exports, columnar analytics data
 
 ## Data Schema
 
@@ -83,52 +108,67 @@ JSON configuration file stored in the project root. Structure:
 ```json
 {
   "llm": {
-    "provider": "[ollama|openai|anthropic]",
-    "model": "[model-name]",
-    "endpoint": "[API endpoint URL]",
-    "api_key": "[optional, for cloud providers]",
+    "model": "ollama/qwen2.5-coder:7b",
+    "endpoint": "http://localhost:11434",
+    "api_key": "",
     "prompt_format": {
-      "structure": "[ddl-samples-hints-question]",
+      "structure": "ddl-samples-hints-question",
       "include_sample_rows": true,
       "sample_row_count": 8,
-      "hint_style": "[sql_comment|prose|json]",
+      "hint_style": "sql_comment",
       "response_prefix": "SELECT"
     }
   },
   "database": {
-    "type": "[duckdb|postgresql|sqlite]",
-    "connection": "[path or connection string]",
-    "log_path": "[path to query log database]",
+    "db_path": "",
+    "parquet_path": "",
+    "table_name": "",
+    "log_path": "~/path/to/query_logs.duckdb",
     "max_retries": 3
   },
   "semantic_layer": {
-    "auto_queries": [
-      "SELECT DISTINCT [category_column] FROM [table] ORDER BY [category_column]",
-      "SELECT MIN([date_column]), MAX([date_column]) FROM [table]",
-      "SELECT [category_column], COUNT(*) FROM [table] GROUP BY [category_column]"
-    ],
+    "auto_queries": [],
     "static_context": [
       "=== DATABASE ENGINE ===",
-      "[Database name] syntax only.",
+      "DuckDB syntax only.",
       
-      "=== SCHEMA ===",
-      "Table: [table_name]",
-      "Columns: [column list with types]",
-      
-      "=== DATE HANDLING ===",
-      "[Date format and query patterns for your database]",
+      "=== QUERY RULES ===",
+      "Do not filter on columns unless the question explicitly mentions them.",
       
       "=== TYPE/CATEGORY MAPPINGS ===",
       "[Natural language term] → [database value]",
       
       "=== AGGREGATION RULES ===",
-      "[Which columns to SUM vs AVG, special handling notes]",
-      
-      "=== COMMON QUERY PATTERNS ===",
-      "[Example patterns that work well for your data]"
+      "[Which columns to SUM vs AVG, special handling notes]"
     ]
   }
 }
+```
+
+### LLM Configuration
+
+Uses [LiteLLM](https://github.com/BerriAI/litellm) for provider-agnostic LLM calls.
+
+| Setting | Description |
+|---------|-------------|
+| `model` | LiteLLM model string (e.g., `ollama/qwen2.5-coder:7b`, `anthropic/claude-sonnet-4-5-20250929`, `gpt-4`) |
+| `endpoint` | API base URL (required for Ollama, ignored for cloud providers) |
+| `api_key` | API key (or set via environment: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) |
+
+**Example configurations:**
+
+```json
+// Local (Ollama)
+"model": "ollama/qwen2.5-coder:7b",
+"endpoint": "http://localhost:11434"
+
+// Anthropic
+"model": "anthropic/claude-sonnet-4-5-20250929",
+"api_key": "sk-ant-..."
+
+// OpenAI
+"model": "gpt-4",
+"api_key": "sk-..."
 ```
 
 ### LLM Prompt Format Options
@@ -146,7 +186,7 @@ The `prompt_format` section controls how the semantic context is assembled for t
 Different LLMs perform better with different prompt structures. For example:
 - **Qwen2.5-Coder**: Trained on DDL → samples → hints → question format
 - **GPT-4**: More flexible; prose hints often work well
-- **Claude**: Structured context with clear section headers
+- **Claude**: Structured context with clear section headers; less prone to sample data confusion
 
 ## Semantic Layer
 
@@ -157,8 +197,7 @@ A hybrid approach provides the LLM with data context:
 - Schema introspection (column names, types)
 - Distinct values for categorical columns
 - Date range of data
-- Row counts per category
-- Sample data rows
+- Sample data rows (formatted as CSV for clarity)
 
 ### Manually Curated (config-driven)
 
@@ -167,6 +206,7 @@ A hybrid approach provides the LLM with data context:
 - Aggregation rules (SUM vs AVG)
 - Common query patterns
 - Domain-specific disambiguation
+- Query rules (e.g., "Don't filter unless explicitly mentioned")
 
 The semantic layer is built once at startup and cached in memory. If underlying data changes, restart the MCP server to rebuild.
 
@@ -221,6 +261,7 @@ All query attempts are logged to a separate database for analysis:
 - Track success rate over time
 - Analyze which question types need better hints
 - Audit trail for debugging
+- Build another NLQ-to-SQL MCP to query your logs!
 
 ## SQL Sanitization
 
@@ -237,12 +278,15 @@ Implement these as a sanitization pass before query execution.
 
 ## Key Design Decisions
 
-1. **Local-first option**: Support local LLM (Ollama) to manage costs and enable offline operation
-2. **Single table preferred**: Simpler schema = better LLM accuracy; denormalize if needed
-3. **Retry with error context**: Pass failed SQL + error back to LLM for self-correction
-4. **Semantic layer as prompt engineering**: Most "tuning" happens in config, not code
-5. **Protocol-based client**: MCP standard allows swapping frontends without server changes
-6. **Logging for learning**: Query logs drive iterative semantic layer improvement
+1. **LiteLLM for provider flexibility**: Single interface to 100+ LLM providers; swap via config
+2. **Local-first option**: Support local LLM (Ollama) to manage costs and enable offline operation
+3. **Multiple data sources**: Support both DuckDB files and Parquet for flexibility
+4. **Single table preferred**: Simpler schema = better LLM accuracy; denormalize if needed
+5. **Retry with error context**: Pass failed SQL + error back to LLM for self-correction
+6. **Semantic layer as prompt engineering**: Most "tuning" happens in config, not code
+7. **CSV sample format**: Clearer than Python tuples; reduces LLM confusion with sample values
+8. **Protocol-based client**: MCP standard allows swapping frontends without server changes
+9. **Logging for learning**: Query logs drive iterative semantic layer improvement
 
 ## Implementation Checklist
 
@@ -264,10 +308,10 @@ project-root/
 ├── config.json           # All configuration
 ├── server.py             # MCP server entry point
 ├── semantic_layer.py     # Context builder
-├── llm_client.py         # LLM communication + prompt assembly
+├── llm_client.py         # LLM communication via LiteLLM
 ├── query_executor.py     # SQL execution + retry logic
 ├── query_logger.py       # Audit logging
-└── [data files]          # Parquet, CSV, or database files
+└── [data files]          # DuckDB, Parquet, or CSV files
 ```
 
 ## Appendix: Sample Static Context Categories
@@ -283,6 +327,10 @@ Adapt these categories for your domain:
 
 === DATE HANDLING ===
 [Date formats, casting requirements, common date patterns]
+
+=== QUERY RULES ===
+Do not filter on columns unless the question explicitly mentions them.
+[Other behavioral guidance for the LLM]
 
 === TYPE/CATEGORY MAPPINGS ===
 [Natural language synonyms → actual database values]

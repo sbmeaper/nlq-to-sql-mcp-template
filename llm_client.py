@@ -1,65 +1,46 @@
-import requests
+from litellm import completion
 from typing import Optional
 
 
 def call_llm(prompt: str, config: dict) -> dict:
-    """Send a prompt to the LLM and return the response with diagnostics."""
+    """
+    Send a prompt to the LLM and return the response with diagnostics.
 
-    provider = config["llm"]["provider"]
-    endpoint = config["llm"]["endpoint"]
+    Uses LiteLLM for provider-agnostic LLM calls. Model format:
+    - Ollama: "ollama/qwen2.5-coder:7b"
+    - OpenAI: "gpt-4" or "openai/gpt-4"
+    - Anthropic: "anthropic/claude-sonnet-4-5-20250929"
+
+    API keys can be set in config or via environment variables:
+    - ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
+    """
+
     model = config["llm"]["model"]
+    endpoint = config["llm"].get("endpoint", "")
+    api_key = config["llm"].get("api_key", "")
 
-    if provider == "ollama":
-        return _call_ollama(prompt, endpoint, model)
-    elif provider == "openai":
-        api_key = config["llm"].get("api_key", "")
-        return _call_openai(prompt, endpoint, model, api_key)
-    else:
-        raise ValueError(f"Unsupported LLM provider: {provider}")
-
-
-def _call_ollama(prompt: str, endpoint: str, model: str) -> dict:
-    """Call Ollama's generate endpoint."""
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False
-    }
-
-    response = requests.post(endpoint, json=payload)
-    response.raise_for_status()
-
-    result = response.json()
-
-    return {
-        "text": result.get("response", ""),
-        "input_tokens": result.get("prompt_eval_count", 0),
-        "output_tokens": result.get("eval_count", 0)
-    }
-
-
-def _call_openai(prompt: str, endpoint: str, model: str, api_key: str) -> dict:
-    """Call OpenAI-compatible chat completions endpoint."""
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
+    # Build kwargs for litellm
+    kwargs = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0
     }
 
-    response = requests.post(endpoint, json=payload, headers=headers)
-    response.raise_for_status()
+    # For Ollama, set api_base
+    if model.startswith("ollama/") and endpoint:
+        kwargs["api_base"] = endpoint
 
-    result = response.json()
-    
+    # For cloud providers, api_key can be set here or via env var
+    # LiteLLM checks ANTHROPIC_API_KEY, OPENAI_API_KEY, etc. automatically
+    if api_key:
+        kwargs["api_key"] = api_key
+
+    response = completion(**kwargs)
+
     return {
-        "text": result["choices"][0]["message"]["content"],
-        "input_tokens": result.get("usage", {}).get("prompt_tokens", 0),
-        "output_tokens": result.get("usage", {}).get("completion_tokens", 0)
+        "text": response.choices[0].message.content,
+        "input_tokens": response.usage.prompt_tokens,
+        "output_tokens": response.usage.completion_tokens
     }
 
 

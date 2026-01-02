@@ -12,7 +12,7 @@ A template for building MCP servers that enable natural language queries against
 
 2. **Install dependencies**
    ```bash
-   pip install duckdb requests mcp
+   pip install duckdb litellm mcp
    ```
 
 3. **Ensure Ollama is running** (or configure a cloud LLM)
@@ -22,8 +22,8 @@ A template for building MCP servers that enable natural language queries against
    ```
 
 4. **Update `config.json`**
-   - Set `parquet_path` to your data file
-   - Set `table_name` to what you want the LLM to call it
+   - Set `db_path` to a DuckDB database file, OR `parquet_path` to a Parquet file
+   - Set `table_name` (optional — auto-discovered if database has one table)
    - Set `log_path` for query logging
 
 5. **Test the semantic layer**
@@ -63,6 +63,32 @@ A template for building MCP servers that enable natural language queries against
 
 If you have categorical columns or special data structures, add queries to `auto_queries` that extract useful context at startup.
 
+## Data Sources
+
+The template supports two data source types:
+
+### DuckDB Database File
+```json
+"database": {
+  "db_path": "~/path/to/data.duckdb",
+  "table_name": "",
+  ...
+}
+```
+- Leave `table_name` empty to auto-discover (works if database has exactly one table)
+- Connects read-only to the database file
+
+### Parquet File
+```json
+"database": {
+  "parquet_path": "/path/to/data.parquet",
+  "table_name": "data",
+  ...
+}
+```
+- Creates an in-memory DuckDB connection with a view to the Parquet file
+- `table_name` is used as the view name (defaults to "data")
+
 ## Files
 
 | File | Purpose |
@@ -70,14 +96,14 @@ If you have categorical columns or special data structures, add queries to `auto
 | `config.json` | All configuration (LLM, database, semantic layer) |
 | `server.py` | MCP server entry point |
 | `semantic_layer.py` | Auto-introspects schema, builds prompt context |
-| `llm_client.py` | LLM communication, prompt assembly |
+| `llm_client.py` | LLM communication via LiteLLM |
 | `query_executor.py` | SQL execution, retry logic |
 | `query_logger.py` | Audit logging |
 | `PROJECT_SPEC.md` | Full architecture documentation |
 
 ## Query Logging
 
-All queries are logged to `query_logs.duckdb` with:
+All queries are logged to a DuckDB file (configured via `log_path`) with:
 - Request ID (groups retries)
 - Natural language question
 - Generated SQL
@@ -89,26 +115,38 @@ Review logs periodically to identify failure patterns and refine your semantic l
 
 ## Switching LLMs
 
-Edit `config.json`:
+Uses [LiteLLM](https://github.com/BerriAI/litellm) for provider-agnostic LLM calls. Change the `model` field in `config.json`:
 
 **Local (Ollama):**
 ```json
 "llm": {
-  "provider": "ollama",
-  "model": "qwen2.5-coder:7b",
-  "endpoint": "http://localhost:11434/api/generate"
+  "model": "ollama/qwen2.5-coder:7b",
+  "endpoint": "http://localhost:11434",
+  "api_key": ""
+}
+```
+
+**Anthropic:**
+```json
+"llm": {
+  "model": "anthropic/claude-sonnet-4-5-20250929",
+  "endpoint": "",
+  "api_key": "sk-ant-..."
 }
 ```
 
 **OpenAI:**
 ```json
 "llm": {
-  "provider": "openai",
   "model": "gpt-4",
-  "endpoint": "https://api.openai.com/v1/chat/completions",
+  "endpoint": "",
   "api_key": "sk-..."
 }
 ```
+
+API keys can also be set via environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) instead of in config.
+
+See [LiteLLM supported providers](https://docs.litellm.ai/docs/providers) for the full list.
 
 ## License
 
