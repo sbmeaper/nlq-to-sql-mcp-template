@@ -15,16 +15,80 @@ A template for building MCP servers that enable natural language queries against
    pip install duckdb litellm mcp
    ```
 
-3. **Ensure Ollama is running** (or configure a cloud LLM)
+3. **Choose and configure your LLM**
+
+   This template uses [LiteLLM](https://docs.litellm.ai/docs/providers) for provider-agnostic LLM calls. Pick one:
+
+   <details>
+   <summary><strong>Anthropic (Claude)</strong></summary>
+
+   Update `config.json`:
+   ```json
+   "llm": {
+     "model": "anthropic/claude-sonnet-4-5-20250929",
+     "endpoint": "",
+     "api_key": ""
+   }
+   ```
+   
+   Set your API key via environment variable:
+   ```bash
+   export ANTHROPIC_API_KEY="sk-ant-..."
+   ```
+   Or put it directly in the `api_key` field.
+   </details>
+
+   <details>
+   <summary><strong>OpenAI (GPT-4)</strong></summary>
+
+   Update `config.json`:
+   ```json
+   "llm": {
+     "model": "gpt-4",
+     "endpoint": "",
+     "api_key": ""
+   }
+   ```
+   
+   Set your API key via environment variable:
+   ```bash
+   export OPENAI_API_KEY="sk-..."
+   ```
+   Or put it directly in the `api_key` field.
+   </details>
+
+   <details>
+   <summary><strong>Ollama (Local)</strong></summary>
+
+   Install and start Ollama:
    ```bash
    ollama pull qwen2.5-coder:7b
    ollama serve
    ```
 
-4. **Update `config.json`**
+   Update `config.json`:
+   ```json
+   "llm": {
+     "model": "ollama/qwen2.5-coder:7b",
+     "endpoint": "http://localhost:11434",
+     "api_key": ""
+   }
+   ```
+   </details>
+
+   <details>
+   <summary><strong>Other providers</strong></summary>
+
+   See [LiteLLM supported providers](https://docs.litellm.ai/docs/providers) for the full list (100+ providers supported).
+   </details>
+
+4. **Configure your data source**
+
+   Update `config.json` with your database settings:
+   
    - Set `db_path` to a DuckDB database file, OR `parquet_path` to a Parquet file
-   - Set `table_name` (optional — auto-discovered if database has one table)
-   - Set `log_path` for query logging
+   - Set `table_name` (optional — auto-discovered if database has exactly one table)
+   - Set `log_path` for query logging (e.g., `./query_logs.duckdb`)
 
 5. **Test the semantic layer**
    ```bash
@@ -112,41 +176,6 @@ All queries are logged to a DuckDB file (configured via `log_path`) with:
 - Execution time
 
 Review logs periodically to identify failure patterns and refine your semantic layer hints.
-
-## Switching LLMs
-
-Uses [LiteLLM](https://github.com/BerriAI/litellm) for provider-agnostic LLM calls. Change the `model` field in `config.json`:
-
-**Local (Ollama):**
-```json
-"llm": {
-  "model": "ollama/qwen2.5-coder:7b",
-  "endpoint": "http://localhost:11434",
-  "api_key": ""
-}
-```
-
-**Anthropic:**
-```json
-"llm": {
-  "model": "anthropic/claude-sonnet-4-5-20250929",
-  "endpoint": "",
-  "api_key": "sk-ant-..."
-}
-```
-
-**OpenAI:**
-```json
-"llm": {
-  "model": "gpt-4",
-  "endpoint": "",
-  "api_key": "sk-..."
-}
-```
-
-API keys can also be set via environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) instead of in config.
-
-See [LiteLLM supported providers](https://docs.litellm.ai/docs/providers) for the full list.
 
 ## License
 
